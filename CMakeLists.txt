@@ -35,6 +35,25 @@ set_target_properties(fftw3 PROPERTIES
 ## Compile MEX Function
 ###################################################################################################
 
+# 1d DCT
+matlab_add_mex(
+    NAME matlab_dct1
+    SRC
+        src/wrapper_dct1.cpp
+    LINK_TO
+        fftw3
+)
+
+add_custom_command(TARGET matlab_dct1 POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "$<TARGET_FILE:matlab_dct1>"
+        "${PROJECT_SOURCE_DIR}/mex/$<TARGET_FILE_NAME:matlab_dct1>"
+
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${FFTW_ROOT}/libfftw3-3.dll"
+        "${PROJECT_SOURCE_DIR}/mex/libfftw3-3.dll"
+)
+
 # 2d DCT
 matlab_add_mex(
     NAME matlab_dct2
