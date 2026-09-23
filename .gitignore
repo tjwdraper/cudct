@@ -1,3 +1,5 @@
 fftw3
 mex/
 mirt_dctn
+.vscode
+build
