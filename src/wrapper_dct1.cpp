@@ -52,7 +52,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     if (plan == nullptr)
         mexErrMsgTxt("Could not create FFTW plan.");
 
-    // (I)output calculation
+    // (I)DCT calculation
     fftw_execute(plan);
 
     // Free memory

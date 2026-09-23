@@ -34,7 +34,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     if (operation == nullptr)
         mexErrMsgTxt("Could not convert to string.");
 
-    // Create fftw plan:
+    // Create fftw plan - Matlab uses column-major ordering, which means we need to swap dimensions if we want to match and 
+    // compare with DCT implementation in Matlab.
     fftw_plan plan;
     if (strcmp(operation, "forward") == 0)
         plan = fftw_plan_r2r_2d(dims[1], dims[0], input, output, FFTW_REDFT10, FFTW_REDFT10, FFTW_ESTIMATE);
@@ -48,7 +49,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     if (plan == nullptr)
         mexErrMsgTxt("Could not create FFTW plan.");
 
-    // (I)output calculation
+    // (I)DCT calculation
     fftw_execute(plan);
 
     // Free memory
