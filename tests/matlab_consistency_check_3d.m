@@ -2,17 +2,21 @@ clc;
 clear all;
 close all;
 
+pkg load signal;
+
 addpath("mirt_dctn");
+addpath("mex")
 
 %% Load image volume
-load mri;
-img = double(squeeze(D));
-clear D map siz;
+img = randn(101, 67, 245);
+%load mri;
+%img = double(squeeze(D));
+%clear D map siz;
 
 %% Calculate the forward DCT 
 dct_img_matlab_mirt = mirt_dctn(img);
 
-dct_img_fftw = matlab_dct3(img, 'forward');
+dct_img_fftw = fftw_dct3(img, 'forward');
 
 [M,N,K] = size(img);
 scale = ones(M,N,K) / (8 * sqrt(M*N*K));
@@ -29,7 +33,7 @@ fprintf("Difference DCT fftw - mirt:\t%.10f\n", diff_dct_standard_fftw);
 
 %% Calculate the inverse DCT
 recon_img_matlab_mirt = mirt_idctn(dct_img_matlab_mirt);
-recon_img_fftw = matlab_dct3(matlab_dct3(img, 'forward'), 'inverse') / (8 * numel(img)); % Normalization factor
+recon_img_fftw = fftw_dct3(fftw_dct3(img, 'forward'), 'inverse') / (8 * numel(img)); % Normalization factor
 
 %% Calculate the residual error
 err_matlab_mirt = sum((recon_img_matlab_mirt(:) - img(:)).^2);

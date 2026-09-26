@@ -2,6 +2,8 @@ clc;
 clear all;
 close all;
 
+pkg load signal;
+
 addpath("mirt_dctn");
 addpath("mex");
 
@@ -12,7 +14,7 @@ img = randn(123,1);
 dct_img_matlab_standard = dct(img); 
 dct_img_matlab_mirt = mirt_dctn(img);
 
-dct_img_fftw = matlab_dct1(img, 'forward');
+dct_img_fftw = fftw_dct1(img, 'forward');
 
 N = length(img);
 scale = ones(N,1) / (2 * sqrt(N));
@@ -33,7 +35,7 @@ fprintf("Difference DCT mirt - fftw:\t%.10f\n", diff_dct_mirt_fftw);
 %% Calculate the inverse DCT
 recon_img_matlab_standard = idct2(dct_img_matlab_standard);
 recon_img_matlab_mirt = mirt_idctn(dct_img_matlab_mirt);
-recon_img_fftw = matlab_dct1(matlab_dct1(img, 'forward'), 'inverse') / (2 * numel(img)); % Normalization factor
+recon_img_fftw = fftw_dct1(fftw_dct1(img, 'forward'), 'inverse') / (2 * numel(img)); % Normalization factor
 
 %% Calculate the residual error
 err_matlab_standard = sum((recon_img_matlab_standard(:) - img(:)).^2);
