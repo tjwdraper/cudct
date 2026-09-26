@@ -15,6 +15,7 @@ class transformer {
 
         // DCT methods
         void dct(double* output, const double* const input);
+        void idct(double* output, const double* const input);
 
     private:
         void set_freq_from_real(const double* const);
