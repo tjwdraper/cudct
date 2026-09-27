@@ -25,11 +25,10 @@ __global__ void set_weights_kernel(cufftDoubleComplex* ww, const size_t siz) {
 
 __global__ void set_freq_kernel(
     cufftDoubleComplex* freq,
-    const double* input,
+    const double* const input,
     size_t size
 ) {
-    size_t idx =
-        blockIdx.x * blockDim.x + threadIdx.x;
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= size)
         return;
@@ -184,28 +183,29 @@ transformer::~transformer() {
 
 // DCT
 void transformer::dct(double* output, const double* const input) {
-    // // Copy, then in-place transform
-    // cudaMemcpy(output, input, _size*sizeof(double), cudaMemcpyDeviceToDevice);
+    // Copy, then in-place transform
+    cudaMemcpy(output, input, _size*sizeof(double), cudaMemcpyDeviceToDevice);
 
-    // // Create copy of the dimensions
-    // std::vector<size_t> dims = _dims;
+    // Create copy of the dimensions
+    std::vector<size_t> dims = _dims;
 
-    // // Iterative over dimensions
-    // for (size_t d = 0; d < _ndim; ++d) {
-    //     set_freq_from_real(output);
+    // Iterative over dimensions
+    for (size_t d = 0; d < _ndim; ++d) {
+        set_freq_from_real(output);
 
-    //     cufftExecZ2Z(_plans[d], _freq, _freq, CUFFT_FORWARD);
+        cufftExecZ2Z(_plans[d], _freq, _freq, CUFFT_FORWARD);
 
-    //     multiply_weights(output, d);
+        multiply_weights(output, d);
 
-    //     if (d+1 < _ndim) {
-    //         shift_dimensions(_tmp, output, dims);
+        // If not at last iteration, permute image dimensions
+        if (d+1 < _ndim) {
+            // shift_dimensions(_tmp, output, dims);
 
-    //         cudaMemcpy(output, _tmp, _size*sizeof(double), cudaMemcpyDeviceToDevice);
+            // cudaMemcpy(output, _tmp, _size*sizeof(double), cudaMemcpyDeviceToDevice);
 
-    //         std::rotate(dims.begin(), dims.begin() + 1, dims.end());
-    //     }
-    // }
+            // std::rotate(dims.begin(), dims.begin() + 1, dims.end());
+        }
+    }
 }
 
 void transformer::idct(double* output, const double* const input) {

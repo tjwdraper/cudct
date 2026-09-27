@@ -6,7 +6,6 @@
 #include <cuda_runtime.h>
 #include <cufft.h>
 
-
 class transformer {
     public:
         // Constructors and deconstructors
@@ -25,7 +24,6 @@ class transformer {
         std::vector<cufftDoubleComplex*> _weights;
         
         std::vector<size_t> _dims;
-        // std::vector<size_t> _strides;
 
         size_t _ndim;
         size_t _size;

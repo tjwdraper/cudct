@@ -1,5 +1,7 @@
 #include <mex.h>
 #include <cstring>
+#include <numeric> 
+#include <functional>
 
 #include "include/transformer.cuh"
 
@@ -40,26 +42,38 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     // Convert mwSize* to std::vector<std::size_t> and squeeze dimensions of length one:
     std::vector<std::size_t> dims_t = squeeze_dimensions(dims, ndim);
     std::size_t ndim_t = dims_t.size();
+    const auto numel_t = std::accumulate(dims_t.cbegin(), dims_t.cend(), 1, std::multiplies<std::size_t>{});
 
     // Get the input
-    double* input = mxGetPr(data);
-
-    // Allocate memory for the output-II and execute plan
-    plhs[0] = mxCreateNumericArray(ndim, dims, mxDOUBLE_CLASS, mxREAL);
-    double* output = mxGetPr(plhs[0]);
+    double* input_h = mxGetPr(data);
+    double* input_d;
+    cudaMalloc((void**)&input_d, numel_t*sizeof(double));
+    cudaMemcpy(input_d, input_h, numel_t*sizeof(double), cudaMemcpyHostToDevice);
 
     // Create cudct object
     transformer cudct(dims_t);
 
+    // Calculate the transform on device array
+    double* output_d;
+    cudaMalloc((void**)&output_d, numel_t*sizeof(double));
+
     if (strcmp(operation, "forward") == 0)
-        cudct.dct(output, input);
+        cudct.dct(output_d, input_d);
     else if (strcmp(operation, "inverse") == 0)
-        cudct.idct(output, input);
+        cudct.idct(output_d, input_d);
     else {
         mxFree(operation);
         mexErrMsgTxt("Operation must be 'forward' or 'inverse'.");
     }
 
+    // Allocate memory for the output-II and execute plan
+    plhs[0] = mxCreateNumericArray(ndim, dims, mxDOUBLE_CLASS, mxREAL);
+    double* output_h = mxGetPr(plhs[0]);
+
+    cudaMemcpy(output_h, output_d, numel_t*sizeof(double), cudaMemcpyDeviceToHost);
+
     // Free memory
+    cudaFree(input_d);
+    cudaFree(output_d);
     mxFree(operation);
 }
