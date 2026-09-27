@@ -18,7 +18,7 @@ class transformer {
 
     private:
         void set_freq_from_real(const double* const, const int d);
-        void multiply_weights(double* output, int d) const;
+        void multiply_weights(double* const output, int d) const;
         void shift_dimensions(double* output, const double* const input, const std::size_t* const dims) const;
 
         std::vector<cufftHandle> _plans;

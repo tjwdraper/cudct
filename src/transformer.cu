@@ -2,20 +2,23 @@
 
 #include <stdexcept>
 #include <climits>
-
 #include <algorithm>
 
+#define _USE_MATH_DEFINES
+#include <cmath>
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
 // CUDA kernels
-__global__ void set_weights_kernel(cufftDoubleComplex* ww, const size_t siz) {
+///////////////////////////////////////////////////////////////////////////////////////////////////
+__global__ 
+void set_weights_kernel(cufftDoubleComplex* ww, const size_t siz) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i > siz - 1) {
         return;
     }
 
-    constexpr double PI = 3.14159265358979323846;
-
-    ww[i].x = 2*cos(PI * i * -1.0 / (2.0 * siz)) / sqrt(2.0 * siz);
-    ww[i].y = 2*sin(PI * i * -1.0 / (2.0 * siz)) / sqrt(2.0 * siz);
+    ww[i].x = 2*cos(M_PI * i * -1.0 / (2.0 * siz)) / sqrt(2.0 * siz);
+    ww[i].y = 2*sin(M_PI * i * -1.0 / (2.0 * siz)) / sqrt(2.0 * siz);
 
     // Set the DC frequency separately.
     if (i == 0) {
@@ -24,38 +27,24 @@ __global__ void set_weights_kernel(cufftDoubleComplex* ww, const size_t siz) {
     }
 }
 
-__global__ void set_freq_kernel(
-    cufftDoubleComplex* freq,
-    const double* const input,
-    size_t cx,
-    size_t Nx,
-    size_t N
-) {
-    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+__global__ 
+void set_freq_kernel(cufftDoubleComplex* freq, const double* const input, std::size_t cx, std::size_t Nx, std::size_t N) {
+    std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= N)
         return;
 
-    int i = idx % Nx;
-    int j = idx / Nx;
+    std::size_t i = idx % Nx;
+    std::size_t j = idx / Nx;
 
-    int i_shift;
-    if (i < cx)
-        i_shift = 2*i;
-    else
-        i_shift = 2*Nx - 2*i - 1;
+    std::size_t i_shift = (i < cx ? 2*i : 2*Nx - 2*i - 1);
 
     freq[i + j * Nx].x = input[i_shift + j * Nx];
     freq[i + j * Nx].y = 0.0;
 }
 
-__global__ void multiply_weights_kernel(
-    double* output,
-    const cufftDoubleComplex* freq,
-    const cufftDoubleComplex* weights,
-    size_t Nx,
-    size_t N
-) {
+__global__ 
+void multiply_weights_kernel(double* const output, const cufftDoubleComplex* const freq, const cufftDoubleComplex* const weights, size_t Nx, size_t N) {
     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= N)
@@ -66,15 +55,9 @@ __global__ void multiply_weights_kernel(
     output[idx] = freq[idx].x * weights[i].x - freq[idx].y * weights[i].y;
 }
 
-__global__ void shift_dimensions_kernel(
-    double* output,
-    const double* input,
-    std::size_t N,
-    const std::size_t* dims,
-    std::size_t ndim
-) {
-    std::size_t idx =
-        blockIdx.x * blockDim.x + threadIdx.x;
+__global__ 
+void shift_dimensions_kernel(double* const output, const double* const input, std::size_t N, const std::size_t* const dims, std::size_t ndim) {
+    std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= N)
         return;
@@ -110,7 +93,9 @@ __global__ void shift_dimensions_kernel(
     output[idx_shift] = input[idx];
 }
 
-// Helpers
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// Private methods
+///////////////////////////////////////////////////////////////////////////////////////////////////
 void transformer::set_freq_from_real(const double* const input, const int d) {
     constexpr int threadsPerBlock = 256;
     int blocksPerGrid = static_cast<int>((_size + threadsPerBlock - 1) / threadsPerBlock);
@@ -121,7 +106,7 @@ void transformer::set_freq_from_real(const double* const input, const int d) {
     set_freq_kernel<<<blocksPerGrid, threadsPerBlock>>>(_freq, input, cx, nx, _size);
 }
 
-void transformer::multiply_weights(double* output, int d) const {
+void transformer::multiply_weights(double* const output, int d) const {
     constexpr int threadsPerBlock = 256;
     int blocksPerGrid = static_cast<int>((_size + threadsPerBlock - 1) / threadsPerBlock);
 
@@ -129,15 +114,16 @@ void transformer::multiply_weights(double* output, int d) const {
 }
 
 
-void transformer::shift_dimensions(double* output, const double* const input, const std::size_t* const dims) const {
+void transformer::shift_dimensions(double* const output, const double* const input, const std::size_t* const dims) const {
     constexpr int threadsPerBlock = 256;
     int blocksPerGrid = static_cast<int>((_size + threadsPerBlock - 1) / threadsPerBlock);
 
     shift_dimensions_kernel<<<blocksPerGrid, threadsPerBlock>>>(output, input, _size, dims, _ndim);
 }
 
-
-// Constructors and deconstructors
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// Public methods
+///////////////////////////////////////////////////////////////////////////////////////////////////
 transformer::transformer(const std::vector<size_t>& dims) : _dims(dims) {
     // Check for zero dimensions
     for (size_t d : _dims) {
