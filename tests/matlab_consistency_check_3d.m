@@ -7,7 +7,6 @@ pkg load signal;
 addpath("mirt_dctn");
 addpath("mex")
 
-for t = 1:1000
 %% Load image volume
 img = randn(101, 67, 245);
 
@@ -50,5 +49,3 @@ err_cuda = sum((recon_img_cuda(:) - img(:)).^2);
 fprintf("Error (mirt):\t%.10f\n", err_mirt);
 fprintf("Error (fttw):\t%.10f\n", err_fftw);
 fprintf("Error (cuda):\t%.10f\n", err_cuda);
-
-endfor

@@ -35,8 +35,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     // Load dimensions
     const mxArray* data = prhs[0];
     mwSize ndim = mxGetNumberOfDimensions(data);
-    if (ndim != 3) 
-        mexErrMsgTxt("First argument must be a 3d-matrix");
     const mwSize* dims = mxGetDimensions(data);
 
     // Convert mwSize* to std::vector<std::size_t> and squeeze dimensions of length one:
