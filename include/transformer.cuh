@@ -19,15 +19,16 @@ class transformer {
     private:
         void set_freq_from_real(const double* const, const int d);
         void multiply_weights(double* const output, int d) const;
-        void shift_dimensions(double* output, const double* const input, const std::size_t* const dims) const;
+        void shift_dimensions(double* output, const double* const input, std::size_t offset) const;
 
         std::vector<cufftHandle> _plans;
         std::vector<cufftDoubleComplex*> _weights;
         
-        std::vector<size_t> _dims;
+        std::vector<std::size_t> _dims;
+        std::size_t* _dims_d; // Device copy of _dims.data()
 
-        size_t _ndim;
-        size_t _size;
+        std::size_t _ndim;
+        std::size_t _size;
 
         cufftDoubleComplex* _freq;
         double* _tmp;
