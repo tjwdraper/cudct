@@ -11,7 +11,7 @@
 // CUDA kernels
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 __global__ 
-void set_weights_kernel(cufftDoubleComplex* ww, const size_t siz) {
+void set_weights_kernel(cufftDoubleComplex* ww, const std::size_t siz) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i > siz - 1) {
         return;
@@ -44,8 +44,8 @@ void set_freq_kernel(cufftDoubleComplex* freq, const double* const input, std::s
 }
 
 __global__ 
-void multiply_weights_kernel(double* const output, const cufftDoubleComplex* const freq, const cufftDoubleComplex* const weights, size_t Nx, size_t N) {
-    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+void multiply_weights_kernel(double* const output, const cufftDoubleComplex* const freq, const cufftDoubleComplex* const weights, std::size_t Nx, std::size_t N) {
+    std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= N)
         return;
@@ -55,8 +55,15 @@ void multiply_weights_kernel(double* const output, const cufftDoubleComplex* con
     output[idx] = freq[idx].x * weights[i].x - freq[idx].y * weights[i].y;
 }
 
-__global__ 
-void shift_dimensions_kernel(double* const output, const double* const input, std::size_t N, const std::size_t* const dims, std::size_t ndim) {
+__global__
+void shift_dimensions_kernel(
+    double* const output,
+    const double* const input,
+    std::size_t N,
+    const std::size_t* const dims,
+    std::size_t ndim,
+    std::size_t offset
+) {
     std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= N)
@@ -64,28 +71,26 @@ void shift_dimensions_kernel(double* const output, const double* const input, st
 
     std::size_t remainder = idx;
     std::size_t idx_shift = 0;
-    std::size_t stride = 1;
 
     for (std::size_t d = 0; d < ndim; ++d) {
-        // Coordinate in input dimension d
-        std::size_t coord = remainder % dims[d];
-        remainder /= dims[d];
+        // Dimension d in the currently rotated array.
+        std::size_t input_dim = (d + offset) % ndim;
+        std::size_t dim = dims[input_dim];
 
-        // Input dimension d becomes output dimension d-1.
-        //
-        // Input:
-        //   [0, 1, 2, ..., ndim-1]
-        //
-        // Output:
-        //   [1, 2, ..., ndim-1, 0]
-        //
+        // Coordinate in this dimension.
+        std::size_t coord = remainder % dim;
+        remainder /= dim;
+
+        // This dimension moves one position to the left.
         std::size_t output_dim = (d + ndim - 1) % ndim;
 
-        // Need the output stride for output_dim.
+        // Calculate its stride in the output array.
         std::size_t output_stride = 1;
 
-        for (std::size_t k = 0; k < output_dim; ++k)
-            output_stride *= dims[(k + 1) % ndim];
+        for (std::size_t k = 0; k < output_dim; ++k) {
+            std::size_t output_input_dim = (k + 1 + offset) % ndim;
+            output_stride *= dims[output_input_dim];
+        }
 
         idx_shift += coord * output_stride;
     }
@@ -114,19 +119,19 @@ void transformer::multiply_weights(double* const output, int d) const {
 }
 
 
-void transformer::shift_dimensions(double* const output, const double* const input, const std::size_t* const dims) const {
+void transformer::shift_dimensions(double* const output, const double* const input, std::size_t offset) const {
     constexpr int threadsPerBlock = 256;
     int blocksPerGrid = static_cast<int>((_size + threadsPerBlock - 1) / threadsPerBlock);
 
-    shift_dimensions_kernel<<<blocksPerGrid, threadsPerBlock>>>(output, input, _size, dims, _ndim);
+    shift_dimensions_kernel<<<blocksPerGrid, threadsPerBlock>>>(output, input, _size, _dims_d, _ndim, offset);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // Public methods
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-transformer::transformer(const std::vector<size_t>& dims) : _dims(dims) {
+transformer::transformer(const std::vector<std::size_t>& dims) : _dims(dims) {
     // Check for zero dimensions
-    for (size_t d : _dims) {
+    for (std::size_t d : _dims) {
         if (d == 0)
             throw std::runtime_error("Dimensions must be non-zero.");
     }
@@ -134,12 +139,16 @@ transformer::transformer(const std::vector<size_t>& dims) : _dims(dims) {
     // Number of dimensions
     _ndim = dims.size();
     if (_ndim <= 0)
-        throw std::runtime_error("transformer::transformer(const std::vector<size_t>) has to contain input with at least one entry.");
+        throw std::runtime_error("transformer::transformer(const std::vector<std::size_t>) has to contain input with at least one entry.");
 
     // Set strides and size of the input matrix
     _size = dims[0];
     for (std::size_t d = 1; d < _ndim; ++d)
         _size *= dims[d];
+
+    // Copy dimensions from host to device
+    cudaMalloc((void**)&_dims_d, _ndim*sizeof(std::size_t));
+    cudaMemcpy(_dims_d, _dims.data(), _ndim*sizeof(std::size_t), cudaMemcpyHostToDevice);
 
     // Create cufft plans to transform along each dimension
     _plans.resize(_ndim);
@@ -187,39 +196,26 @@ transformer::~transformer() {
     for (auto weights : _weights)
         cudaFree(weights);
 
+    cudaFree(_dims_d);
     cudaFree(_tmp);
     cudaFree(_freq);
 }
 
 // DCT
 void transformer::dct(double* output, const double* const input) {
-    // Copy, then in-place transform
-    cudaMemcpy(output, input, _size*sizeof(double), cudaMemcpyDeviceToDevice);
-
-    // Create copy of the dimensions
-    std::vector<size_t> dims = _dims;
-
-    std::size_t* dims_d;
-    cudaMalloc((void**)&dims_d, _ndim*sizeof(std::size_t));
-
     // Iterative over dimensions
-    for (size_t d = 0; d < _ndim; ++d) {
-        set_freq_from_real(output, d);
+    for (std::size_t d = 0; d < _ndim; ++d) {
+        if (d == 0)
+            transformer::set_freq_from_real(input, d);
+        else
+            transformer::set_freq_from_real(output, d);
 
         cufftExecZ2Z(_plans[d], _freq, _freq, CUFFT_FORWARD);
 
-        multiply_weights(output, d);
+        transformer::multiply_weights(_tmp, d);
 
-        // Shift dimensions
-        cudaMemcpy(dims_d, dims.data(), _ndim*sizeof(std::size_t), cudaMemcpyHostToDevice);
-
-        shift_dimensions(_tmp, output, dims_d);
-        cudaMemcpy(output, _tmp, _size*sizeof(double), cudaMemcpyDeviceToDevice);
-
-        std::rotate(dims.begin(), dims.begin() + 1, dims.end());
+        transformer::shift_dimensions(output, _tmp, d);
     }
-
-    cudaFree(dims_d);
 }
 
 void transformer::idct(double* output, const double* const input) {
