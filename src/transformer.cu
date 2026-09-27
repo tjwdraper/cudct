@@ -66,64 +66,6 @@ __global__ void multiply_weights_kernel(
     output[idx] = freq[idx].x * weights[i].x - freq[idx].y * weights[i].y;
 }
 
-// __global__ void shift_dimensions_kernel(
-//     double* output,
-//     const double* input,
-//     const size_t* old_dims,
-//     const size_t* new_dims,
-//     const size_t* old_strides,
-//     const size_t* new_strides,
-//     size_t ndim,
-//     size_t size
-// ) {
-//     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-
-//     if (idx >= size)
-//         return;
-
-//     // Decode index in new array into coordinates.
-//     size_t remaining = idx;
-
-//     // Coordinates in the new array.
-//     // new coordinate:
-//     // [y, z, ..., x]
-//     size_t old_idx = 0;
-
-//     for (size_t d = 0; d < ndim; ++d) {
-//         size_t coord = remaining / new_strides[d];
-//         remaining %= new_strides[d];
-
-//         // New axis d corresponds to old axis (d + 1) % ndim.
-//         size_t old_axis = (d + 1) % ndim;
-
-//         old_idx += coord * old_strides[old_axis];
-//     }
-
-//     output[idx] = input[old_idx];
-// }
-
-// __global__ void shift_dimensions_kernel(
-//     double* output,
-//     const double* const input,
-//     std::size_t N,
-//     std::size_t* dims,
-//     std::size_t ndim
-// ) {
-//     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-
-//     if (idx >= N)
-//         return;
-
-//     size_t idx_shift = 0;
-//     size_t remainder = N;
-//     for (std::size_t d = 0; d < ndim; ++d) {
-//         // idx_shift = j * 1 + k * Ny + l * Ny * Nz + ... + i * N
-//     }
-
-//     output[idx_shift] = input[idx];
-
-// }
-
 __global__ void shift_dimensions_kernel(
     double* output,
     const double* input,
@@ -210,18 +152,13 @@ transformer::transformer(const std::vector<size_t>& dims) : _dims(dims) {
 
     // Set strides and size of the input matrix
     _size = dims[0];
-    // _strides.resize(_ndim);
-    // _strides[0] = 1;
-    for (std::size_t d = 1; d < _ndim; ++d) {
-        // _strides[d] = _strides[d-1] * _dims[d-1]; // Column-major ordering
+    for (std::size_t d = 1; d < _ndim; ++d)
         _size *= dims[d];
-    }
 
     // Create cufft plans to transform along each dimension
     _plans.resize(_ndim);
     for (std::size_t d = 0; d < _ndim; ++d) {
         int n = static_cast<int>(_dims[d]);
-        
         int batch = static_cast<int>(_size / n);
 
         cufftResult results = cufftPlanMany(

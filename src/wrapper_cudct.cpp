@@ -2,6 +2,7 @@
 #include <cstring>
 #include <numeric> 
 #include <functional>
+#include <stdexcept>
 
 #include "include/transformer.cuh"
 
@@ -41,6 +42,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     std::vector<std::size_t> dims_t = squeeze_dimensions(dims, ndim);
     std::size_t ndim_t = dims_t.size();
     const auto numel_t = std::accumulate(dims_t.cbegin(), dims_t.cend(), 1, std::multiplies<std::size_t>{});
+
+    if (numel_t == 0)
+        throw std::runtime_error("Must pass non-empty array to cudct.");
 
     // Get the input
     double* input_h = mxGetPr(data);
