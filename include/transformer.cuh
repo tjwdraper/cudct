@@ -37,8 +37,10 @@ class transformer {
         void idct(T* const output, const T* const input);
 
     private:
-        void set_freq_from_real(const T* const, const int d);
+        void set_freq_from_real(const T* const input, const int d);
+        void set_freq_from_coefs(const T* const input, const int d);
         void multiply_weights(T* const output, int d) const;
+        void rearrange_coefs(T* const output, const int d) const;
         void shift_dimensions(T* const output, const T* const input, std::size_t offset) const;
 
         std::vector<cufftHandle> _plans;

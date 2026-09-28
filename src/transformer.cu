@@ -30,9 +30,9 @@ void set_weights_kernel(typename cudct_traits<T>::cudctComplex* ww, const std::s
 
 template <typename T>
 __global__ 
-void set_freq_kernel(typename cudct_traits<T>::cudctComplex* const freq, 
-                     const T* const input, 
-                     std::size_t cx, std::size_t Nx, std::size_t N) {
+void set_freq_from_real_kernel(typename cudct_traits<T>::cudctComplex* const freq, 
+                               const T* const input, 
+                               std::size_t cx, std::size_t Nx, std::size_t N) {
     std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= N)
@@ -45,6 +45,23 @@ void set_freq_kernel(typename cudct_traits<T>::cudctComplex* const freq,
 
     freq[i + j * Nx].x = input[i_shift + j * Nx];
     freq[i + j * Nx].y = 0.0;
+}
+
+template<typename T>
+__global__
+void set_freq_from_coefs_kernel(typename cudct_traits<T>::cudctComplex* const freq,
+                                const T* const input,
+                                const typename cudct_traits<T>::cudctComplex* const weights,
+                                std::size_t Nx, std::size_t N) {
+    std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx >= N)
+        return;
+
+    int i = idx % Nx;
+
+    freq[idx].x = input[idx] * weights[i].x;
+    freq[idx].y = input[idx] * weights[i].y;
 }
 
 template <typename T>
@@ -61,6 +78,25 @@ void multiply_weights_kernel(T* const output,
     int i = idx % Nx;
 
     output[idx] = freq[idx].x * weights[i].x - freq[idx].y * weights[i].y;
+}
+
+template <typename T>
+__global__
+void rearrange_coefs_kernel(T* const output,
+                            const typename cudct_traits<T>::cudctComplex* const freq,
+                            std::size_t Nx,
+                            std::size_t N) {
+    std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx >= N)
+        return;
+
+    std::size_t i = idx % Nx;
+    std::size_t j = idx / Nx;
+
+    std::size_t i_shift = (i % 2 == 0 ? i / 2 : Nx - (i-1)/2 - 1);
+
+    output[i + j * Nx] = freq[i_shift + j * Nx].x;
 }
 
 template <typename T>
@@ -118,7 +154,15 @@ void transformer<T>::set_freq_from_real(const T* const input, const int d) {
     const std::size_t nx = _dims[d];
     const std::size_t cx = nx / 2 + (nx % 2 == 0 ? 0 : 1);
 
-    set_freq_kernel<T><<<blocksPerGrid, threadsPerBlock>>>(_freq, input, cx, nx, _size);
+    set_freq_from_real_kernel<T><<<blocksPerGrid, threadsPerBlock>>>(_freq, input, cx, nx, _size);
+}
+
+template <typename T>
+void transformer<T>::set_freq_from_coefs(const T* const input, const int d) {
+    constexpr int threadsPerBlock = 256;
+    int blocksPerGrid = static_cast<int>((_size + threadsPerBlock - 1) / threadsPerBlock);
+
+    set_freq_from_coefs_kernel<T><<<blocksPerGrid, threadsPerBlock>>>(_freq, input, _weights[d], _dims[d], _size);
 }
 
 template <typename T>
@@ -127,6 +171,16 @@ void transformer<T>::multiply_weights(T* const output, int d) const {
     int blocksPerGrid = static_cast<int>((_size + threadsPerBlock - 1) / threadsPerBlock);
 
     multiply_weights_kernel<T><<<blocksPerGrid, threadsPerBlock>>>(output, _freq, _weights[d], _dims[d], _size);
+}
+
+template <typename T>
+void transformer<T>::rearrange_coefs(T* const output, const int d) const {
+    constexpr int threadsPerBlock = 256;
+    int blocksPerGrid = static_cast<int>((_size + threadsPerBlock - 1) / threadsPerBlock);
+
+    const std::size_t nx = _dims[d];
+
+    rearrange_coefs_kernel<T><<<blocksPerGrid, threadsPerBlock>>>(output, _freq, nx, _size);
 }
 
 template <typename T>
@@ -220,21 +274,33 @@ void transformer<T>::dct(T* const output, const T* const input) {
     // Iterative over dimensions
     for (std::size_t d = 0; d < _ndim; ++d) {
         if (d == 0)
-            transformer::set_freq_from_real(input, d);
+            transformer<T>::set_freq_from_real(input, d);
         else
-            transformer::set_freq_from_real(output, d);
+            transformer<T>::set_freq_from_real(output, d);
 
         cudct_traits<T>::exec(_plans[d], _freq, _freq, CUFFT_FORWARD);
 
-        transformer::multiply_weights(_tmp, d);
+        transformer<T>::multiply_weights(_tmp, d);
 
-        transformer::shift_dimensions(output, _tmp, d);
+        transformer<T>::shift_dimensions(output, _tmp, d);
     }
 }
 
 template <typename T>
 void transformer<T>::idct(T* const output, const T* const input) {
+    // Iterate over dimensions
+    for (std::size_t d = 0; d < _ndim; ++d) {
+        if (d == 0)
+            transformer<T>::set_freq_from_coefs(input, d);
+        else
+            transformer<T>::set_freq_from_coefs(output, d);
 
+        cudct_traits<T>::exec(_plans[d], _freq, _freq, CUFFT_FORWARD);
+
+        transformer<T>::rearrange_coefs(_tmp, d);
+
+        transformer<T>::shift_dimensions(output, _tmp, d);
+    }
 }
 
 template class transformer<float>;
