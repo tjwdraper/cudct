@@ -10,25 +10,29 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // CUDA kernels
 ///////////////////////////////////////////////////////////////////////////////////////////////////
+template <typename T>
 __global__ 
-void set_weights_kernel(cufftDoubleComplex* ww, const std::size_t siz) {
+void set_weights_kernel(typename cudct_traits<T>::cudctComplex* ww, const std::size_t siz) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i > siz - 1) {
         return;
     }
 
-    ww[i].x = 2*cos(M_PI * i * -1.0 / (2.0 * siz)) / sqrt(2.0 * siz);
+    ww[i].x = 2*cos(M_PI * i * -1.0 / (2.0 * siz)) / sqrt(2.0 * siz); // TODO: if T=float, change cos/sin/sqrt -> cosf/sinf/sqrtf.
     ww[i].y = 2*sin(M_PI * i * -1.0 / (2.0 * siz)) / sqrt(2.0 * siz);
 
     // Set the DC frequency separately.
     if (i == 0) {
-        ww[i].x = ww[i].x / sqrt(2.0);
+        ww[i].x = ww[i].x / sqrt(2.0); // TODO: CUDA has automatic inverse square root function.
         ww[i].y = ww[i].y / sqrt(2.0);
     }
 }
 
+template <typename T>
 __global__ 
-void set_freq_kernel(cufftDoubleComplex* freq, const double* const input, std::size_t cx, std::size_t Nx, std::size_t N) {
+void set_freq_kernel(typename cudct_traits<T>::cudctComplex* const freq, 
+                     const T* const input, 
+                     std::size_t cx, std::size_t Nx, std::size_t N) {
     std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= N)
@@ -43,8 +47,12 @@ void set_freq_kernel(cufftDoubleComplex* freq, const double* const input, std::s
     freq[i + j * Nx].y = 0.0;
 }
 
+template <typename T>
 __global__ 
-void multiply_weights_kernel(double* const output, const cufftDoubleComplex* const freq, const cufftDoubleComplex* const weights, std::size_t Nx, std::size_t N) {
+void multiply_weights_kernel(T* const output, 
+                             const typename cudct_traits<T>::cudctComplex* const freq, 
+                             const typename cudct_traits<T>::cudctComplex* const weights, 
+                             std::size_t Nx, std::size_t N) {
     std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= N)
@@ -55,10 +63,11 @@ void multiply_weights_kernel(double* const output, const cufftDoubleComplex* con
     output[idx] = freq[idx].x * weights[i].x - freq[idx].y * weights[i].y;
 }
 
+template <typename T>
 __global__
 void shift_dimensions_kernel(
-    double* const output,
-    const double* const input,
+    T* const output,
+    const T* const input,
     std::size_t N,
     const std::size_t* const dims,
     std::size_t ndim,
@@ -101,35 +110,38 @@ void shift_dimensions_kernel(
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // Private methods
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-void transformer::set_freq_from_real(const double* const input, const int d) {
+template <typename T>
+void transformer<T>::set_freq_from_real(const T* const input, const int d) {
     constexpr int threadsPerBlock = 256;
     int blocksPerGrid = static_cast<int>((_size + threadsPerBlock - 1) / threadsPerBlock);
 
     const std::size_t nx = _dims[d];
     const std::size_t cx = nx / 2 + (nx % 2 == 0 ? 0 : 1);
 
-    set_freq_kernel<<<blocksPerGrid, threadsPerBlock>>>(_freq, input, cx, nx, _size);
+    set_freq_kernel<T><<<blocksPerGrid, threadsPerBlock>>>(_freq, input, cx, nx, _size);
 }
 
-void transformer::multiply_weights(double* const output, int d) const {
+template <typename T>
+void transformer<T>::multiply_weights(T* const output, int d) const {
     constexpr int threadsPerBlock = 256;
     int blocksPerGrid = static_cast<int>((_size + threadsPerBlock - 1) / threadsPerBlock);
 
-    multiply_weights_kernel<<<blocksPerGrid, threadsPerBlock>>>(output, _freq, _weights[d], _dims[d], _size);
+    multiply_weights_kernel<T><<<blocksPerGrid, threadsPerBlock>>>(output, _freq, _weights[d], _dims[d], _size);
 }
 
-
-void transformer::shift_dimensions(double* const output, const double* const input, std::size_t offset) const {
+template <typename T>
+void transformer<T>::shift_dimensions(T* const output, const T* const input, std::size_t offset) const {
     constexpr int threadsPerBlock = 256;
     int blocksPerGrid = static_cast<int>((_size + threadsPerBlock - 1) / threadsPerBlock);
 
-    shift_dimensions_kernel<<<blocksPerGrid, threadsPerBlock>>>(output, input, _size, _dims_d, _ndim, offset);
+    shift_dimensions_kernel<T><<<blocksPerGrid, threadsPerBlock>>>(output, input, _size, _dims_d, _ndim, offset);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // Public methods
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-transformer::transformer(const std::vector<std::size_t>& dims) : _dims(dims) {
+template <typename T>
+transformer<T>::transformer(const std::vector<std::size_t>& dims) : _dims(dims) {
     // Check for zero dimensions
     for (std::size_t d : _dims) {
         if (d == 0)
@@ -162,7 +174,7 @@ transformer::transformer(const std::vector<std::size_t>& dims) : _dims(dims) {
             &n,
             nullptr, 1, n,
             nullptr, 1, n,
-            CUFFT_Z2Z,
+            cudct_traits<T>::fftType,
             batch
         );
 
@@ -173,23 +185,24 @@ transformer::transformer(const std::vector<std::size_t>& dims) : _dims(dims) {
     // Allocate and initialize weight vectors
     _weights.resize(_ndim);
     for (std::size_t d = 0; d < _ndim; ++d) {
-        cudaMalloc((void**)&_weights[d], _dims[d]*sizeof(cufftDoubleComplex));
+        cudaMalloc((void**)&_weights[d], _dims[d]*sizeof(typename cudct_traits<T>::cudctComplex));
 
         constexpr int threadsPerBlock = 256;
         int blocksPerGrid = static_cast<int>((_dims[d] + threadsPerBlock - 1) / threadsPerBlock );
 
-        set_weights_kernel<<<blocksPerGrid, threadsPerBlock>>>(_weights[d], _dims[d]);
+        set_weights_kernel<T><<<blocksPerGrid, threadsPerBlock>>>(_weights[d], _dims[d]);
     }
 
     // Initialize auxiliary arrays for intermediate results
-    cudaMalloc((void**)&_tmp, _size*sizeof(double));
-    cudaMalloc((void**)&_freq, _size*sizeof(cufftDoubleComplex));
+    cudaMalloc((void**)&_tmp, _size*sizeof(T));
+    cudaMalloc((void**)&_freq, _size*sizeof(typename cudct_traits<T>::cudctComplex));
 
     // Sync
     cudaDeviceSynchronize();
 }
 
-transformer::~transformer() {
+template <typename T>
+transformer<T>::~transformer() {
     for (auto plan : _plans)
         cufftDestroy(plan);
 
@@ -202,7 +215,8 @@ transformer::~transformer() {
 }
 
 // DCT
-void transformer::dct(double* output, const double* const input) {
+template <typename T>
+void transformer<T>::dct(T* const output, const T* const input) {
     // Iterative over dimensions
     for (std::size_t d = 0; d < _ndim; ++d) {
         if (d == 0)
@@ -210,7 +224,7 @@ void transformer::dct(double* output, const double* const input) {
         else
             transformer::set_freq_from_real(output, d);
 
-        cufftExecZ2Z(_plans[d], _freq, _freq, CUFFT_FORWARD);
+        cudct_traits<T>::exec(_plans[d], _freq, _freq, CUFFT_FORWARD);
 
         transformer::multiply_weights(_tmp, d);
 
@@ -218,6 +232,10 @@ void transformer::dct(double* output, const double* const input) {
     }
 }
 
-void transformer::idct(double* output, const double* const input) {
+template <typename T>
+void transformer<T>::idct(T* const output, const T* const input) {
 
 }
+
+template class transformer<float>;
+template class transformer<double>;
