@@ -11,24 +11,24 @@ precision = "double";
 
 for N = [32, 64, 128, 258, 512, 1024]
 
-    img = randn(N*ones(d,1));
+    input = randn(N*ones(d,1));
     if strcmp(precision, "single")
-        img = single(img);
+        input = single(input);
     endif
 
     # Benchmark mirt
     tstart_mirt = cputime;
-    dct_mirt = mirt_dctn(img);
+    dct_mirt = mirt_dctn(input);
     dt_mirt = cputime - tstart_mirt;
 
     # Benchmark FFTW
     tstart_fftw = cputime;
-    dct_fftw = fftw_dct3(img, 'forward');
+    dct_fftw = octave_fftw(input, 'forward');
     dt_fftw = cputime - tstart_fftw;
 
     # Benchmark CUDA
     tstart_cuda = cputime;
-    dct_cuda = cudct(img, 'forward');
+    dct_cuda = octave_cudct(input, 'forward');
     dt_cuda = cputime - tstart_cuda;
 
     # Report
