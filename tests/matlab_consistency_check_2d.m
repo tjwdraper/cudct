@@ -16,16 +16,7 @@ img = imresize(img, [253, 201]);
 dct_img_matlab = dct2(img); 
 dct_img_mirt = mirt_dctn(img);
 dct_img_cuda = cudct(img, 'forward');
-
-dct_img_fftw = fftw_dct2(img, 'forward');
-
-[M,N] = size(img);
-scale = ones(M,N) / (4 * sqrt(M*N));
-
-scale(2:end,:) = scale(2:end,:) * sqrt(2);
-scale(:,2:end) = scale(:,2:end) * sqrt(2);
-
-dct_img_fftw = dct_img_fftw .* scale;
+dct_img_fftw = fftw(img, 'forward');
 
 %% Check differences between DCT transforms
 diff_dct_matlab_mirt = sum((dct_img_matlab(:) - dct_img_mirt(:)).^2);
@@ -42,8 +33,7 @@ fprintf("Difference DCT mirt - fftw:\t%.10f\n", diff_dct_mirt_fftw);
 recon_img_matlab = idct2(dct_img_matlab);
 recon_img_mirt = mirt_idctn(dct_img_mirt);
 recon_img_cuda = cudct(dct_img_cuda, 'inverse');
-
-recon_img_fftw = fftw_dct2(fftw_dct2(img, 'forward'), 'inverse') / (4 * numel(img)); % Normalization factor
+recon_img_fftw = fftw(dct_img_fftw, 'inverse');
 
 %% Calculate the residual error
 err_matlab = sum((recon_img_matlab(:) - img(:)).^2);
