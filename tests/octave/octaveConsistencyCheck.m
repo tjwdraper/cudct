@@ -8,7 +8,7 @@ addpath("mirt_dctn");
 addpath("mex")
 
 % Select precision
-precision = "double";
+precision = "single";
 
 % Select dimensions
 dims = [101, 67, 245]; % Some arbitrary dimensions;

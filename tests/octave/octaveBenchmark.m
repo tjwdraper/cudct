@@ -7,9 +7,9 @@ addpath("mex");
 
 d = 3;
 
-precision = "double";
+precision = "single";
 
-for N = [32, 64, 128, 258, 512, 1024]
+for N = [32, 64, 128, 256, 512]
 
     input = randn(N*ones(d,1));
     if strcmp(precision, "single")
