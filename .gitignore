@@ -1,6 +1,4 @@
-fftw3
-mex/
-mirt_dctn
 .vscode
-build
-compile_mex_functions.sh
+mirt_dctn
+mex/
+CMakeLists.txt
