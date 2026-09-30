@@ -1,4 +1,7 @@
 .vscode
 mirt_dctn
 mex/
-CMakeLists.txt
+fftw
+build
+compile.ps1
+compile.sh
