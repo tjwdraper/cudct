@@ -161,39 +161,3 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     delete[] dims_cm;
         
 }
-
-
-    // // Get the input 
-    // double* input = (double*) mxGetData(data);
-
-    // // Preprocess
-    // double* input_orthogonal = new double[numel];
-    // memcpy(input_orthogonal, input, numel*sizeof(double));
-    // if (strcmp(operation, "inverse") == 0)
-    //     orthogonalize_inverse(input_orthogonal, dims, ndim, numel);
-
-    // // Allocate memory for the output
-    // plhs[0] = mxCreateNumericArray(ndim, dims, mxDOUBLE_CLASS, mxREAL);
-    // double* output_orthogonal = (double*) mxGetData(plhs[0]);
-
-
-
-
-    // // Create FFTW kinds
-    // fftw_r2r_kind* kinds = new fftw_r2r_kind[ndim];
-    // for (std::size_t d = 0; d < ndim; ++d)
-    //     kinds[d] = (strcmp(operation, "forward") == 0 ? FFTW_REDFT10 : FFTW_REDFT01);
-
-    // // Create FFTW plan
-    // fftw_plan plan;
-    // plan = fftw_plan_r2r(ndim, dims_cm, input_orthogonal, output_orthogonal, kinds, FFTW_ESTIMATE);
-
-    // if (plan == nullptr)
-    //     mexErrMsgTxt("Could not create FFTW plan");
-
-    // // Execute plan
-    // fftw_execute(plan);
-
-    // // Post-process
-    // if (strcmp(operation, "forward") == 0)
-    //     orthogonalize_forward(output_orthogonal, dims, ndim, numel);

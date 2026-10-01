@@ -1,14 +1,16 @@
-#include <mex.h>
 #include <cstring>
-#include <numeric> 
+#include <numeric>
 #include <functional>
 #include <stdexcept>
 #include <algorithm>
 #include <map>
 
+#include <mex.h>
+#include <gpu/mxGPUArray.h>
+
 #include "include/transformer.cuh"
 
-// Read strings from MATLAB and convert 
+// Read strings from MATLAB and convert
 enum class Direction {CUDCT_FORWARD, CUDCT_INVERSE};
 
 const std::map<std::string, Direction> direction_mapper {
@@ -26,17 +28,18 @@ T mxParseString(const mxArray* input, const std::map<std::string, T>& mapper) {
     if (!mxIsChar(input))
         mexErrMsgTxt("Input argument has to be a character array.");
 
-    const char* input_c = mxArrayToString(input);
-    std::string key(input_c);
+    // const char* input_c = mxArrayToString(input);
+    std::string key(mxArrayToString(input));
+    // mxFree(input_c);
 
     auto it = mapper.find(key);
     if (it == mapper.end())
-        mexErrMsgIdAndTxt("Input argument %s is not a valid option.", input_c);
+        mexErrMsgTxt("Input argument is not a valid option.");
 
     return it->second;
 }
 
-// Create static object containing CUDCT configuration
+// Craete stattic object containing CUDCT configuration
 struct cudct_config {
     void* cudct = nullptr;
     mwSize* dims = nullptr;
@@ -59,7 +62,26 @@ std::vector<std::size_t> squeeze_dimensions(const mwSize* const dims, const mwSi
     return dims_t;
 }
 
+void cleanup() {
+    // Clean up
+    if (config.cudct != nullptr) {
+        if (config.precision == mxSINGLE_CLASS)
+            delete static_cast<transformer<float>*>(config.cudct);
+        else if (config.precision == mxDOUBLE_CLASS)
+            delete static_cast<transformer<double>*>(config.cudct);
+        config.cudct = nullptr;
+    }
+
+    if (config.dims != nullptr) {
+        delete[] config.dims;
+        config.dims = nullptr;
+    }
+    configured = false;
+}
+
+// MEX function entry point
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+    // Setup cudct_config
     if (nlhs == 0 && nrhs == 2 && !configured) {
         if (mxIsComplex(prhs[0]))
             mexErrMsgTxt("First input must be a real matrix.");
@@ -88,7 +110,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
         std::vector<std::size_t> dims_t = squeeze_dimensions(config.dims, config.ndim);
         config.numel = std::accumulate(dims_t.cbegin(), dims_t.cend(), 1, std::multiplies<std::size_t>{});
-        
+    
+        // Initialize GPU environment
+        mxInitGPU();
+
         if (config.precision == mxSINGLE_CLASS)
             config.cudct = new transformer<float>(dims_t);
         else if (config.precision == mxDOUBLE_CLASS)
@@ -98,79 +123,76 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
 
         configured = true;
     }
+
+    // Do the actual (I)DCT
     else if (nlhs == 1 && nrhs == 2 && configured) {
-        if (mxIsComplex(prhs[0]))
+        if (!mxIsGPUArray(prhs[0]))
+            mexErrMsgTxt("First input must be a GPU array.");
+        const mxGPUArray* input_gpu = mxGPUCreateFromMxArray(prhs[0]);
+        
+        if (mxGPUGetComplexity(input_gpu) != mxREAL)
             mexErrMsgTxt("First input must be a real matrix.");
         
-        if (mxGetClassID(prhs[0]) != config.precision)
+        if (mxGPUGetClassID(input_gpu) != config.precision)
             mexErrMsgTxt("Input precision does not match configured precision.");
 
-        if (mxGetNumberOfDimensions(prhs[0]) != config.ndim)
+        if (mxGPUGetNumberOfDimensions(input_gpu) != config.ndim)
             mexErrMsgTxt("First argument does not have same number of dimensions as when configured.");
 
-        if (!std::equal(config.dims, config.dims+config.ndim, mxGetDimensions(prhs[0])))
+        if (!std::equal(config.dims, config.dims+config.ndim, mxGPUGetDimensions(input_gpu)))
             mexErrMsgTxt("First argument does not have the same dimensions as when configured");
 
         Direction dir = mxParseString(prhs[1], direction_mapper);
 
         if (config.precision == mxSINGLE_CLASS) {
-            plhs[0] = mxCreateNumericArray(config.ndim, config.dims, config.precision, mxREAL);
-            float* output_h = static_cast<float*>(mxGetData(plhs[0]));
-            float* input_h = static_cast<float*>(mxGetData(prhs[0]));
-            float* output_d;
-            float* input_d;
+            const float* input_d = static_cast<const float*>(mxGPUGetDataReadOnly(input_gpu));
 
-            cudaMalloc((void**)&output_d, config.numel*sizeof(float));
-            cudaMalloc((void**)&input_d, config.numel*sizeof(float));
-            cudaMemcpy(input_d, input_h, config.numel*sizeof(float), cudaMemcpyHostToDevice);
-
+            mxGPUArray* output_gpu = mxGPUCreateGPUArray(config.ndim, config.dims, config.precision, mxREAL, MX_GPU_DO_NOT_INITIALIZE);
+            float* output_d = static_cast<float*>(mxGPUGetData(output_gpu));
+            
             auto* cudct = static_cast<transformer<float>*>(config.cudct);
-            if (dir == Direction::CUDCT_FORWARD)
+
+            if (dir == Direction::CUDCT_FORWARD) {
                 cudct->dct(output_d, input_d);
-            else if (dir == Direction::CUDCT_INVERSE)
+            }
+            else if (dir == Direction::CUDCT_INVERSE) {
                 cudct->idct(output_d, input_d);
+            }
+            cudaDeviceSynchronize();
 
-            cudaMemcpy(output_h, output_d, config.numel*sizeof(float), cudaMemcpyDeviceToHost);
+            plhs[0] = mxGPUCreateMxArrayOnGPU(output_gpu);
 
-            cudaFree(output_d);
-            cudaFree(input_d);
+            mxGPUDestroyGPUArray(output_gpu);
         }
         else if (config.precision == mxDOUBLE_CLASS) {
-            plhs[0] = mxCreateNumericArray(config.ndim, config.dims, config.precision, mxREAL);
-            double* output_h = static_cast<double*>(mxGetData(plhs[0]));
-            double* input_h = static_cast<double*>(mxGetData(prhs[0]));
-            double* output_d;
-            double* input_d;
+            const mxGPUArray* input_gpu = mxGPUCreateFromMxArray(prhs[0]);
+            const double* input_d = static_cast<const double*>(mxGPUGetDataReadOnly(input_gpu));
 
-            cudaMalloc((void**)&output_d, config.numel*sizeof(double));
-            cudaMalloc((void**)&input_d, config.numel*sizeof(double));
-            cudaMemcpy(input_d, input_h, config.numel*sizeof(double), cudaMemcpyHostToDevice);
-
+            mxGPUArray* output_gpu = mxGPUCreateGPUArray(config.ndim, config.dims, config.precision, mxREAL, MX_GPU_DO_NOT_INITIALIZE);
+            double* output_d = static_cast<double*>(mxGPUGetData(output_gpu));
+            
             auto* cudct = static_cast<transformer<double>*>(config.cudct);
-            if (dir == Direction::CUDCT_FORWARD)
+
+            if (dir == Direction::CUDCT_FORWARD) {
                 cudct->dct(output_d, input_d);
-            else if (dir == Direction::CUDCT_INVERSE)
+            }
+            else if (dir == Direction::CUDCT_INVERSE) {
                 cudct->idct(output_d, input_d);
+            }
+            cudaDeviceSynchronize();
 
-            cudaMemcpy(output_h, output_d, config.numel*sizeof(double), cudaMemcpyDeviceToHost);
+            plhs[0] = mxGPUCreateMxArrayOnGPU(output_gpu);
 
-            cudaFree(output_d);
-            cudaFree(input_d);
-        }          
+            mxGPUDestroyGPUArray(output_gpu);
+        }
+
+        mxGPUDestroyGPUArray(input_gpu);
     }
     else if (nlhs == 0 && nrhs == 0 && configured) {
-        if (config.precision == mxSINGLE_CLASS)
-            delete static_cast<transformer<float>*>(config.cudct);
-        else if (config.precision == mxDOUBLE_CLASS)
-            delete static_cast<transformer<double>*>(config.cudct);
-        config.cudct = nullptr;
-
-        delete[] config.dims;
-        config.dims = nullptr;
-        configured = false;
+        cleanup();
     }
-
     else {
         mexErrMsgTxt("Invalid number of input and output variables given");
     }
+
 }
