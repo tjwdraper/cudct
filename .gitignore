@@ -1,6 +1,9 @@
 .vscode
 mirt_dctn
-mex/
+mex/**/*.dll
+mex/**/*.mexw64
+mex/**/*.mexa64
+mex/**/*.mex
 fftw
 build
 compile.ps1

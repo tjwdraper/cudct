@@ -84,8 +84,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         // Preprocess
         float* input_orthogonal = new float[numel];
         memcpy(input_orthogonal, input, numel*sizeof(float));
-        if (strcmp(operation, "inverse") == 0)
-            orthogonalize_inverse(input_orthogonal, dims, ndim, numel);
+        // if (strcmp(operation, "inverse") == 0)
+        //     orthogonalize_inverse(input_orthogonal, dims, ndim, numel);
 
         // Allocate memory for the output
         plhs[0] = mxCreateNumericArray(ndim, dims, mxSINGLE_CLASS, mxREAL);
@@ -107,8 +107,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         fftwf_execute(plan);
 
         // Post-process
-        if (strcmp(operation, "forward") == 0)
-            orthogonalize_forward(output_orthogonal, dims, ndim, numel);
+        // if (strcmp(operation, "forward") == 0)
+        //     orthogonalize_forward(output_orthogonal, dims, ndim, numel);
 
         // Free memory
         fftwf_destroy_plan(plan);

@@ -2,9 +2,13 @@ cmake_minimum_required(VERSION 3.16)
 
 project(cudct LANGUAGES CXX CUDA)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+set(CMAKE_CUDA_ARCHITECTURES 61)
 
 option(BUILD_FFTW "Build FFTW-based implementation" ON)
 option(BUILD_MATLAB "Build Matlab EXecutable (Requires Matlab)" ON)
@@ -30,9 +34,6 @@ if (BUILD_MATLAB)
 endif()
 
 add_subdirectory(mex)
-
-
-
 
 
 
