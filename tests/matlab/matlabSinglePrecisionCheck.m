@@ -1,0 +1,28 @@
+clc;
+clear all;
+close all;
+
+addpath("mirt_dctn");
+addpath("mex/matlab")
+
+%% Load image volume
+input = single(randn(101, 67, 245));
+
+%% Calculate the forward DCT 
+dct_mirt = mirt_dctn(input);
+dct_cuda = matlab_cudct(input, 'forward');
+
+%% Check differences between DCT transforms
+diff_mirt_cuda = sum((dct_mirt(:) - dct_cuda(:)).^2);
+fprintf("Difference DCT mirt - cuda:\t%.10f\n", diff_mirt_cuda);
+
+%% Calculate the inverse DCT
+recon_mirt = mirt_idctn(dct_mirt);
+recon_cuda = matlab_cudct(dct_cuda, 'inverse');
+
+%% Calculate the residual error
+residual_mirt = sum((recon_mirt(:) - input(:)).^2);
+residual_cuda = sum((recon_cuda(:) - input(:)).^2);
+
+fprintf("Difference recon (mirt):\t%.10f\n", residual_mirt);
+fprintf("Difference recon (cuda):\t%.10f\n", residual_cuda);

@@ -8,7 +8,7 @@
 #include <mex.h>
 #include <gpu/mxGPUArray.h>
 
-#include "include/transformer.cuh"
+#include "include/cudct.cuh"
 
 // Read strings from MATLAB and convert
 enum class Direction {CUDCT_FORWARD, CUDCT_INVERSE};
@@ -41,7 +41,7 @@ T mxParseString(const mxArray* input, const std::map<std::string, T>& mapper) {
 
 // Craete stattic object containing CUDCT configuration
 struct cudct_config {
-    void* cudct = nullptr;
+    void* transform = nullptr;
     mwSize* dims = nullptr;
     mwSize ndim;
     mwSize numel;
@@ -64,12 +64,12 @@ std::vector<std::size_t> squeeze_dimensions(const mwSize* const dims, const mwSi
 
 void cleanup() {
     // Clean up
-    if (config.cudct != nullptr) {
+    if (config.transform != nullptr) {
         if (config.precision == mxSINGLE_CLASS)
-            delete static_cast<transformer<float>*>(config.cudct);
+            delete static_cast<cudct<float>*>(config.transform);
         else if (config.precision == mxDOUBLE_CLASS)
-            delete static_cast<transformer<double>*>(config.cudct);
-        config.cudct = nullptr;
+            delete static_cast<cudct<double>*>(config.transform);
+        config.transform = nullptr;
     }
 
     if (config.dims != nullptr) {
@@ -115,9 +115,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         mxInitGPU();
 
         if (config.precision == mxSINGLE_CLASS)
-            config.cudct = new transformer<float>(dims_t);
+            config.transform = new cudct<float>(dims_t);
         else if (config.precision == mxDOUBLE_CLASS)
-            config.cudct = new transformer<double>(dims_t);
+            config.transform = new cudct<double>(dims_t);
         else
             mexErrMsgTxt("Could not convert precision option to single or double.");
 
@@ -150,14 +150,12 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             mxGPUArray* output_gpu = mxGPUCreateGPUArray(config.ndim, config.dims, config.precision, mxREAL, MX_GPU_DO_NOT_INITIALIZE);
             float* output_d = static_cast<float*>(mxGPUGetData(output_gpu));
             
-            auto* cudct = static_cast<transformer<float>*>(config.cudct);
+            auto* transform = static_cast<cudct<float>*>(config.transform);
 
-            if (dir == Direction::CUDCT_FORWARD) {
-                cudct->dct(output_d, input_d);
-            }
-            else if (dir == Direction::CUDCT_INVERSE) {
-                cudct->idct(output_d, input_d);
-            }
+            if (dir == Direction::CUDCT_FORWARD)
+                transform->dct(output_d, input_d);
+            else if (dir == Direction::CUDCT_INVERSE)
+                transform->idct(output_d, input_d);
             cudaDeviceSynchronize();
 
             plhs[0] = mxGPUCreateMxArrayOnGPU(output_gpu);
@@ -171,14 +169,12 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             mxGPUArray* output_gpu = mxGPUCreateGPUArray(config.ndim, config.dims, config.precision, mxREAL, MX_GPU_DO_NOT_INITIALIZE);
             double* output_d = static_cast<double*>(mxGPUGetData(output_gpu));
             
-            auto* cudct = static_cast<transformer<double>*>(config.cudct);
+            auto* transform = static_cast<cudct<double>*>(config.transform);
 
-            if (dir == Direction::CUDCT_FORWARD) {
-                cudct->dct(output_d, input_d);
-            }
-            else if (dir == Direction::CUDCT_INVERSE) {
-                cudct->idct(output_d, input_d);
-            }
+            if (dir == Direction::CUDCT_FORWARD)
+                transform->dct(output_d, input_d);
+            else if (dir == Direction::CUDCT_INVERSE)
+                transform->idct(output_d, input_d);
             cudaDeviceSynchronize();
 
             plhs[0] = mxGPUCreateMxArrayOnGPU(output_gpu);

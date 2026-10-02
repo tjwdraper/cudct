@@ -1,5 +1,5 @@
-#ifndef _TRANSFORMER_CUH_
-#define _TRANSFORMER_CUH_
+#ifndef _CUDA_DCT_CUH_
+#define _CUDA_DCT_CUH_
 
 #include <vector>
 
@@ -26,11 +26,11 @@ struct cudct_traits<double> {
 };
 
 template<typename T>
-class transformer {
+class cudct {
     public:
         // Constructors and deconstructors
-        transformer(const std::vector<size_t>& dims);
-        ~transformer();
+        cudct(const std::vector<size_t>& dims);
+        ~cudct();
 
         // DCT methods
         void dct(T* const output, const T* const input);

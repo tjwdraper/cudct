@@ -4,8 +4,7 @@
 #include <functional>
 #include <stdexcept>
 
-#include "include/transformer.cuh"
-// #include "include/cudct_traits.cuh"
+#include "include/cudct.cuh"
 
 std::vector<std::size_t> squeeze_dimensions(const mwSize* const dims, const mwSize ndim) {
     std::vector<std::size_t> dims_t;
@@ -27,7 +26,7 @@ void run_dct(T* const output, const T* const input, const char* const operation,
     cudaMemcpy(input_d, input, numel*sizeof(T), cudaMemcpyHostToDevice);
 
     // Calculate the transform
-    transformer<T> cudct(dims);
+    cudct<T> cudct(dims);
     if (strcmp(operation, "forward") == 0)
         cudct.dct(output_d, input_d);
     else if (strcmp(operation, "inverse") == 0)

@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <map>
 
-#include "include/transformer.cuh"
+#include "include/cudct.cuh"
 
 // Read strings from MATLAB and convert 
 enum class Direction {CUDCT_FORWARD, CUDCT_INVERSE};
@@ -38,7 +38,7 @@ T mxParseString(const mxArray* input, const std::map<std::string, T>& mapper) {
 
 // Create static object containing CUDCT configuration
 struct cudct_config {
-    void* cudct = nullptr;
+    void* transform = nullptr;
     mwSize* dims = nullptr;
     mwSize ndim;
     mwSize numel;
@@ -90,9 +90,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         config.numel = std::accumulate(dims_t.cbegin(), dims_t.cend(), 1, std::multiplies<std::size_t>{});
         
         if (config.precision == mxSINGLE_CLASS)
-            config.cudct = new transformer<float>(dims_t);
+            config.transform = new cudct<float>(dims_t);
         else if (config.precision == mxDOUBLE_CLASS)
-            config.cudct = new transformer<double>(dims_t);
+            config.transform = new cudct<double>(dims_t);
         else
             mexErrMsgTxt("Could not convert precision option to single or double.");
 
@@ -124,11 +124,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             cudaMalloc((void**)&input_d, config.numel*sizeof(float));
             cudaMemcpy(input_d, input_h, config.numel*sizeof(float), cudaMemcpyHostToDevice);
 
-            auto* cudct = static_cast<transformer<float>*>(config.cudct);
+            auto* transform = static_cast<cudct<float>*>(config.transform);
             if (dir == Direction::CUDCT_FORWARD)
-                cudct->dct(output_d, input_d);
+                transform->dct(output_d, input_d);
             else if (dir == Direction::CUDCT_INVERSE)
-                cudct->idct(output_d, input_d);
+                transform->idct(output_d, input_d);
 
             cudaMemcpy(output_h, output_d, config.numel*sizeof(float), cudaMemcpyDeviceToHost);
 
@@ -146,11 +146,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
             cudaMalloc((void**)&input_d, config.numel*sizeof(double));
             cudaMemcpy(input_d, input_h, config.numel*sizeof(double), cudaMemcpyHostToDevice);
 
-            auto* cudct = static_cast<transformer<double>*>(config.cudct);
+            auto* transform = static_cast<cudct<double>*>(config.transform);
             if (dir == Direction::CUDCT_FORWARD)
-                cudct->dct(output_d, input_d);
+                transform->dct(output_d, input_d);
             else if (dir == Direction::CUDCT_INVERSE)
-                cudct->idct(output_d, input_d);
+                transform->idct(output_d, input_d);
 
             cudaMemcpy(output_h, output_d, config.numel*sizeof(double), cudaMemcpyDeviceToHost);
 
@@ -160,10 +160,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
     }
     else if (nlhs == 0 && nrhs == 0 && configured) {
         if (config.precision == mxSINGLE_CLASS)
-            delete static_cast<transformer<float>*>(config.cudct);
+            delete static_cast<cudct<float>*>(config.transform);
         else if (config.precision == mxDOUBLE_CLASS)
-            delete static_cast<transformer<double>*>(config.cudct);
-        config.cudct = nullptr;
+            delete static_cast<cudct<double>*>(config.transform);
+        config.transform = nullptr;
 
         delete[] config.dims;
         config.dims = nullptr;

@@ -29,7 +29,7 @@ if (BUILD_MATLAB)
             ${PROJECT_SOURCE_DIR}/src/wrapper_cudct.cpp
 
         LINK_TO
-            transformer
+            cudct
     )
 
     add_custom_command(TARGET matlab_cudct POST_BUILD
@@ -49,7 +49,7 @@ if (BUILD_MATLAB)
             ${PROJECT_SOURCE_DIR}/src/wrapper_cudct_static.cpp
 
         LINK_TO
-            transformer
+            cudct
     )
 
     add_custom_command(TARGET matlab_cudct_static POST_BUILD
@@ -69,7 +69,7 @@ if (BUILD_MATLAB)
             ${PROJECT_SOURCE_DIR}/src/wrapper_cudct_gpuarray.cpp
 
         LINK_TO
-            transformer
+            cudct
             "${Matlab_ROOT_DIR}/extern/lib/win64/microsoft/gpu.lib"
     )
 

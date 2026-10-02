@@ -1,4 +1,4 @@
-#include "include/transformer.cuh"
+#include "include/cudct.cuh"
 
 #include <stdexcept>
 #include <climits>
@@ -148,7 +148,7 @@ void shift_dimensions_kernel(
 // Private methods
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 template <typename T>
-void transformer<T>::set_freq_from_real(const T* const input, const int d) {
+void cudct<T>::set_freq_from_real(const T* const input, const int d) {
     constexpr int threadsPerBlock = 256;
     int blocksPerGrid = static_cast<int>((_size + threadsPerBlock - 1) / threadsPerBlock);
 
@@ -159,7 +159,7 @@ void transformer<T>::set_freq_from_real(const T* const input, const int d) {
 }
 
 template <typename T>
-void transformer<T>::set_freq_from_coefs(const T* const input, const int d) {
+void cudct<T>::set_freq_from_coefs(const T* const input, const int d) {
     constexpr int threadsPerBlock = 256;
     int blocksPerGrid = static_cast<int>((_size + threadsPerBlock - 1) / threadsPerBlock);
 
@@ -167,7 +167,7 @@ void transformer<T>::set_freq_from_coefs(const T* const input, const int d) {
 }
 
 template <typename T>
-void transformer<T>::multiply_weights(T* const output, int d) const {
+void cudct<T>::multiply_weights(T* const output, int d) const {
     constexpr int threadsPerBlock = 256;
     int blocksPerGrid = static_cast<int>((_size + threadsPerBlock - 1) / threadsPerBlock);
 
@@ -175,7 +175,7 @@ void transformer<T>::multiply_weights(T* const output, int d) const {
 }
 
 template <typename T>
-void transformer<T>::rearrange_coefs(T* const output, const int d) const {
+void cudct<T>::rearrange_coefs(T* const output, const int d) const {
     constexpr int threadsPerBlock = 256;
     int blocksPerGrid = static_cast<int>((_size + threadsPerBlock - 1) / threadsPerBlock);
 
@@ -185,7 +185,7 @@ void transformer<T>::rearrange_coefs(T* const output, const int d) const {
 }
 
 template <typename T>
-void transformer<T>::shift_dimensions(T* const output, const T* const input, std::size_t offset) const {
+void cudct<T>::shift_dimensions(T* const output, const T* const input, std::size_t offset) const {
     constexpr int threadsPerBlock = 256;
     int blocksPerGrid = static_cast<int>((_size + threadsPerBlock - 1) / threadsPerBlock);
 
@@ -196,7 +196,7 @@ void transformer<T>::shift_dimensions(T* const output, const T* const input, std
 // Public methods
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 template <typename T>
-transformer<T>::transformer(const std::vector<std::size_t>& dims) : _dims(dims) {
+cudct<T>::cudct(const std::vector<std::size_t>& dims) : _dims(dims) {
     // Check for zero dimensions
     for (std::size_t d : _dims) {
         if (d == 0)
@@ -206,7 +206,7 @@ transformer<T>::transformer(const std::vector<std::size_t>& dims) : _dims(dims) 
     // Number of dimensions
     _ndim = dims.size();
     if (_ndim <= 0)
-        throw std::runtime_error("transformer::transformer(const std::vector<std::size_t>) has to contain input with at least one entry.");
+        throw std::runtime_error("cudct::cudct(const std::vector<std::size_t>) has to contain input with at least one entry.");
 
     // Set strides and size of the input matrix
     _size = dims[0];
@@ -257,7 +257,7 @@ transformer<T>::transformer(const std::vector<std::size_t>& dims) : _dims(dims) 
 }
 
 template <typename T>
-transformer<T>::~transformer() {
+cudct<T>::~cudct() {
     for (auto plan : _plans)
         cufftDestroy(plan);
 
@@ -271,38 +271,38 @@ transformer<T>::~transformer() {
 
 // DCT
 template <typename T>
-void transformer<T>::dct(T* const output, const T* const input) {
+void cudct<T>::dct(T* const output, const T* const input) {
     // Iterative over dimensions
     for (std::size_t d = 0; d < _ndim; ++d) {
         if (d == 0)
-            transformer<T>::set_freq_from_real(input, d);
+            cudct<T>::set_freq_from_real(input, d);
         else
-            transformer<T>::set_freq_from_real(output, d);
+            cudct<T>::set_freq_from_real(output, d);
 
         cudct_traits<T>::exec(_plans[d], _freq, _freq, CUFFT_FORWARD);
 
-        transformer<T>::multiply_weights(_tmp, d);
+        cudct<T>::multiply_weights(_tmp, d);
 
-        transformer<T>::shift_dimensions(output, _tmp, d);
+        cudct<T>::shift_dimensions(output, _tmp, d);
     }
 }
 
 template <typename T>
-void transformer<T>::idct(T* const output, const T* const input) {
+void cudct<T>::idct(T* const output, const T* const input) {
     // Iterate over dimensions
     for (std::size_t d = 0; d < _ndim; ++d) {
         if (d == 0)
-            transformer<T>::set_freq_from_coefs(input, d);
+            cudct<T>::set_freq_from_coefs(input, d);
         else
-            transformer<T>::set_freq_from_coefs(output, d);
+            cudct<T>::set_freq_from_coefs(output, d);
 
         cudct_traits<T>::exec(_plans[d], _freq, _freq, CUFFT_FORWARD);
 
-        transformer<T>::rearrange_coefs(_tmp, d);
+        cudct<T>::rearrange_coefs(_tmp, d);
 
-        transformer<T>::shift_dimensions(output, _tmp, d);
+        cudct<T>::shift_dimensions(output, _tmp, d);
     }
 }
 
-template class transformer<float>;
-template class transformer<double>;
+template class cudct<float>;
+template class cudct<double>;
