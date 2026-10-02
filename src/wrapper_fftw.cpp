@@ -4,10 +4,17 @@
 #include <map>
 #include <numeric>
 #include <cmath>
+#include <vector>
 
 template <typename T>
 void orthogonalize_forward(T* const output, const mwSize* dims, std::size_t ndim, std::size_t numel) {
-    T base = 1.0 / (std::pow(2.0, static_cast<T>(ndim)) * std::sqrt(static_cast<T>(numel)));
+    T sqrt2 = std::sqrt(static_cast<T>(2.0));
+    T base = static_cast<T>(1.0) / (std::pow(static_cast<T>(2.0), static_cast<T>(ndim)) * std::sqrt(static_cast<T>(numel)));
+
+    std::vector<T> factors(ndim+1);
+    factors[0] = base;
+    for (std::size_t i = 1; i <= ndim; ++i)
+        factors[i] = factors[i-1] * sqrt2;
 
     for (std::size_t idx = 0; idx < numel; ++idx) {
         std::size_t remainder = idx;
@@ -22,13 +29,19 @@ void orthogonalize_forward(T* const output, const mwSize* dims, std::size_t ndim
                 ++nonzero;
         }
 
-        output[idx] *= base * std::pow(std::sqrt(2.0), static_cast<T>(nonzero));
+        output[idx] *= factors[nonzero];
     }
 }
 
 template <typename T>
 void orthogonalize_inverse(T* const output, const mwSize* dims, std::size_t ndim, std::size_t numel) {
-    T base = 1.0 / std::sqrt(static_cast<T>(numel));
+    T sqrt2 = std::sqrt(static_cast<T>(2.0));
+    T base = static_cast<T>(1.0) / std::sqrt(static_cast<T>(numel));
+
+    std::vector<T> factors(ndim+1);
+    factors[0] = base;
+    for (std::size_t i = 1; i <= ndim; ++i)
+        factors[i] = factors[i-1] / sqrt2;
 
     for (std::size_t idx = 0; idx < numel; ++idx) {
         std::size_t remainder = idx;
@@ -43,7 +56,7 @@ void orthogonalize_inverse(T* const output, const mwSize* dims, std::size_t ndim
                 ++nonzero;
         }
 
-        output[idx] *= base / std::pow(std::sqrt(2.0), static_cast<T>(nonzero));
+        output[idx] *= factors[nonzero];
     }
 }
 
@@ -81,78 +94,85 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
         // Get the input
         float* input = (float*) mxGetData(data);
 
-        // Preprocess
-        float* input_orthogonal = new float[numel];
-        memcpy(input_orthogonal, input, numel*sizeof(float));
-        // if (strcmp(operation, "inverse") == 0)
-        //     orthogonalize_inverse(input_orthogonal, dims, ndim, numel);
-
         // Allocate memory for the output
         plhs[0] = mxCreateNumericArray(ndim, dims, mxSINGLE_CLASS, mxREAL);
-        float* output_orthogonal = (float*) mxGetData(plhs[0]);
+        float* output = (float*) mxGetData(plhs[0]);
 
         // Create FFTW kinds
         fftwf_r2r_kind* kinds = new fftwf_r2r_kind[ndim];
         for (std::size_t d = 0; d < ndim; ++d)
             kinds[d] = (strcmp(operation, "forward") == 0 ? FFTW_REDFT10 : FFTW_REDFT01);
 
-        // Create FFTW plan
+        // Initialize FFTW plan
         fftwf_plan plan;
-        plan = fftwf_plan_r2r(ndim, dims_cm, input_orthogonal, output_orthogonal, kinds, FFTW_ESTIMATE);
 
+        // Check for orthogonalization
+        #ifdef MATLAB_ORTHOGONALIZE
+            memcpy(output, input, numel*sizeof(float));
+            if (strcmp(operation, "inverse") == 0)
+                orthogonalize_inverse(output, dims, ndim, numel);
+
+            plan = fftwf_plan_r2r(ndim, dims_cm, output, output, kinds, FFTW_ESTIMATE);
+        #else
+            plan = fftwf_plan_r2r(ndim, dims_cm, input, output, kinds, FFTW_ESTIMATE);
+        #endif
+
+        // Execute FFTW plan
         if (plan == nullptr)
             mexErrMsgTxt("Could not create FFTW plan");
-
-        // Execute plan
         fftwf_execute(plan);
-
-        // Post-process
-        // if (strcmp(operation, "forward") == 0)
-        //     orthogonalize_forward(output_orthogonal, dims, ndim, numel);
 
         // Free memory
         fftwf_destroy_plan(plan);
         delete[] kinds;
 
-
-
+        // Orthogonalize output if forward transform
+        #ifdef MATLAB_ORTHOGONALIZE
+            if (strcmp(operation, "forward") == 0)
+                orthogonalize_forward(output, dims, ndim, numel);
+        #endif
     }
     else if (mxIsDouble(data)) {
         // Get the input
         double* input = (double*) mxGetData(data);
 
-        // Preprocess
-        double* input_orthogonal = new double[numel];
-        memcpy(input_orthogonal, input, numel*sizeof(double));
-        if (strcmp(operation, "inverse") == 0)
-            orthogonalize_inverse(input_orthogonal, dims, ndim, numel);
-
         // Allocate memory for the output
         plhs[0] = mxCreateNumericArray(ndim, dims, mxDOUBLE_CLASS, mxREAL);
-        double* output_orthogonal = (double*) mxGetData(plhs[0]);
+        double* output = (double*) mxGetData(plhs[0]);
 
         // Create FFTW kinds
         fftw_r2r_kind* kinds = new fftw_r2r_kind[ndim];
         for (std::size_t d = 0; d < ndim; ++d)
             kinds[d] = (strcmp(operation, "forward") == 0 ? FFTW_REDFT10 : FFTW_REDFT01);
 
-        // Create FFTW plan
+        // Initialize FFTW plan
         fftw_plan plan;
-        plan = fftw_plan_r2r(ndim, dims_cm, input_orthogonal, output_orthogonal, kinds, FFTW_ESTIMATE);
 
+        // Check for orthogonalization
+        #ifdef MATLAB_ORTHOGONALIZE
+            memcpy(output, input, numel*sizeof(double));
+            if (strcmp(operation, "inverse") == 0)
+                orthogonalize_inverse(output, dims, ndim, numel);
+
+            plan = fftw_plan_r2r(ndim, dims_cm, output, output, kinds, FFTW_ESTIMATE);
+        #else
+            plan = fftw_plan_r2r(ndim, dims_cm, input, output, kinds, FFTW_ESTIMATE);
+        #endif
+
+        // Execute FFTW plan
         if (plan == nullptr)
             mexErrMsgTxt("Could not create FFTW plan");
-
-        // Execute plan
         fftw_execute(plan);
-
-        // Post-process
-        if (strcmp(operation, "forward") == 0)
-            orthogonalize_forward(output_orthogonal, dims, ndim, numel);
 
         // Free memory
         fftw_destroy_plan(plan);
         delete[] kinds;
+
+        // Orthogonalize output if forward transform
+        #ifdef MATLAB_ORTHOGONALIZE
+            if (strcmp(operation, "forward") == 0)
+                orthogonalize_forward(output, dims, ndim, numel);
+        #endif
 
     }
     
