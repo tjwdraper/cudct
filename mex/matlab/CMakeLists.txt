@@ -26,7 +26,7 @@ if (BUILD_MATLAB)
             matlab_cudct
 
         SRC
-            ${PROJECT_SOURCE_DIR}/src/wrapper_cudct.cpp
+            ${PROJECT_SOURCE_DIR}/src/wrapper_cudct.cu
 
         LINK_TO
             cudct
@@ -46,7 +46,7 @@ if (BUILD_MATLAB)
             matlab_cudct_static
 
         SRC
-            ${PROJECT_SOURCE_DIR}/src/wrapper_cudct_static.cpp
+            ${PROJECT_SOURCE_DIR}/src/wrapper_cudct_static.cu
 
         LINK_TO
             cudct
@@ -66,7 +66,7 @@ if (BUILD_MATLAB)
             matlab_cudct_gpuarray
 
         SRC
-            ${PROJECT_SOURCE_DIR}/src/wrapper_cudct_gpuarray.cpp
+            ${PROJECT_SOURCE_DIR}/src/wrapper_cudct_gpuarray.cu
 
         LINK_TO
             cudct

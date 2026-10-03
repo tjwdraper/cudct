@@ -29,3 +29,5 @@ if (BUILD_MATLAB)
 endif()
 
 add_subdirectory(mex)
+add_subdirectory(tests/cpp)
+add_subdirectory(tests/cuda)
