@@ -16,11 +16,16 @@ option(BUILD_MATLAB "Build Matlab EXecutable (Requires Matlab)" ON)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 if(BUILD_FFTW)
-    find_package(FFTW REQUIRED)
+    find_package(FFTW QUIET)
+
+    if (NOT FFTW_FOUND)
+        message(WARNING "FFTW not found.")
+        set(BUILD_FFTW OFF)
+    endif()
 endif()
 
 if (BUILD_MATLAB)
-    find_package(Matlab REQUIRED COMPONENTS MEX_COMPILER)
+    find_package(Matlab QUIET COMPONENTS MEX_COMPILER)
 
     if (NOT Matlab_FOUND)
         message(WARNING "Matlab not found.")

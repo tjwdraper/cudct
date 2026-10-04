@@ -10,3 +10,4 @@ build
 compile.ps1
 compile.sh
 **/*.exe
+**/*.so
