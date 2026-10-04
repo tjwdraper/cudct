@@ -4,9 +4,8 @@
 #include <climits>
 #include <algorithm>
 
+#define _USE_MATH_DEFINES
 #include <cmath>
-
-constexpr double M_PI = 3.14159265358979323846;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // CUDA kernels

@@ -13,7 +13,7 @@
 int main() {
     // Create dimensions
     const int ndim = 3;
-    const int dims[ndim] = {64, 64, 64};
+    const int dims[ndim] = {256, 256, 256};
     const int numel = std::accumulate(dims, dims+ndim, 1, std::multiplies<int>{});
 
     // Create an instance of an engine
